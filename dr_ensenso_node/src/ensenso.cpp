@@ -77,6 +77,7 @@ protected:
 		param<bool>("registered", registered, true);
 		param<bool>("connect_monocular", connect_monocular, true);
 		param<bool>("synced_retrieve", synced_retrieve, false);
+		param<bool>("hardware_trigger", hardware_trigger, false);
 
 		// get Ensenso serial
 		serial = dr::getParam<std::string>(handle(), "serial", "");
@@ -96,8 +97,11 @@ protected:
 		}
 
 		// activate service servers
-		servers.camera_data                 = advertiseService("get_data"                   , &EnsensoNode::onGetData                  , this);
-		servers.dump_data                   = advertiseService("dump_data"                  , &EnsensoNode::onDumpData                 , this);
+		if (!hardware_trigger) {
+			servers.camera_data                 = advertiseService("get_data"                   , &EnsensoNode::onGetData                  , this);
+			servers.dump_data                   = advertiseService("dump_data"                  , &EnsensoNode::onDumpData                 , this);
+		}
+
 		servers.get_pattern_pose            = advertiseService("detect_calibration_pattern" , &EnsensoNode::onDetectCalibrationPattern , this);
 		servers.initialize_calibration      = advertiseService("initialize_calibration"     , &EnsensoNode::onInitializeCalibration    , this);
 		servers.record_calibration          = advertiseService("record_calibration"         , &EnsensoNode::onRecordCalibration        , this);
@@ -159,6 +163,14 @@ protected:
 		double publish_images_rate = dr::getParam(handle(), "publish_images_rate", 30);
 		if (publish_images_rate > 0) {
 			publish_images_timer = createTimer(ros::Rate(publish_images_rate), &EnsensoNode::publishImage, this);
+		}
+
+		if (hardware_trigger) {
+			// start hardware trigger timer
+			double poll_input_rate = dr::getParam(handle(), "poll_input_rate", 30);
+			if (poll_input_rate > 0) {
+				hardware_trigger_timer = createTimer(ros::Rate(poll_input_rate), &EnsensoNode::captureHardware, this);
+			}
 		}
 
 		// check if there is an monocular camera connected
@@ -284,7 +296,7 @@ protected:
 		return Data{getPointCloud(), image};
 	}
 
-	bool onGetData(dr_ensenso_msgs::GetCameraData::Request &, dr_ensenso_msgs::GetCameraData::Response & res) {
+	bool onGetData(dr_ensenso_msgs::GetCameraData::Response & res) {
 		boost::optional<Data> data = getData();
 		if (!data) return false;
 		pcl::toROSMsg(*data->cloud, res.point_cloud);
@@ -308,7 +320,26 @@ protected:
 		return true;
 	}
 
+	bool onGetData(dr_ensenso_msgs::GetCameraData::Request &, dr_ensenso_msgs::GetCameraData::Response & res) {
+		if (hardware_trigger) return false;
+		return onGetData(res);
+	}
+
+	void captureHardware(ros::TimerEvent const &) {
+		if (!hardware_trigger) return;
+
+		bool input_state = ensenso_camera->readInputState();
+		if (prev_input_state && !input_state) {
+			dr_ensenso_msgs::GetCameraData::Response res;
+			onGetData(res);
+		}
+
+		prev_input_state = input_state;
+	}
+
 	bool onDumpData(std_srvs::Empty::Request &, std_srvs::Empty::Response &) {
+		if (hardware_trigger) return false;
+
 		boost::optional<Data> data = getData();
 		if (!data) return false;
 		dumpData(data->cloud, data->image);
@@ -535,6 +566,9 @@ protected:
 	/// Timer to trigger image publishing.
 	ros::Timer publish_images_timer;
 
+	/// Timer to capture on hardware trigger.
+	ros::Timer hardware_trigger_timer;
+
 	struct Publishers {
 		/// Publisher for the calibration result.
 		ros::Publisher calibration;
@@ -593,6 +627,12 @@ protected:
 
 	/// If true, retrieves the monocular camera and Ensenso simultaneously. A hardware trigger is advised to remove the projector from the uEye image.
 	bool synced_retrieve;
+
+	/// If true, trigger on hardware.
+	bool hardware_trigger;
+
+	/// The previous input state.
+	bool prev_input_state;
 };
 
 }

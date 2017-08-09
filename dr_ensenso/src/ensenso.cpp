@@ -42,7 +42,14 @@ std::string Ensenso::monocularSerialNumber() const {
 }
 
 bool Ensenso::loadParameters(std::string const parameters_file) {
-	return setNxJsonFromFile(ensenso_camera[itmParameters], parameters_file);
+	bool ret = setNxJsonFromFile(ensenso_camera[itmParameters], parameters_file);
+
+	std::ofstream file("params.json");
+	if (file.is_open())
+		file << ensenso_camera[itmParameters].asJson(true); // write entire camera node content as JSON with pretty printing into text file
+	file.close();
+
+	return ret;
 }
 
 bool Ensenso::loadMonocularParameters(std::string const parameters_file) {
@@ -388,7 +395,7 @@ void Ensenso::clearWorkspaceCalibration(bool store) {
 	// clear target name
 	// TODO: Can be removed after settings the target parameter above?
 	// TODO: Should test that.
-	setNx(ensenso_camera[itmLink][itmTarget], "");
+	setNx(ensenso_camera[itmLink][itmTarget], serialNumber() + "_frame");
 
 	if (store) storeWorkspaceCalibration();
 }
@@ -396,6 +403,12 @@ void Ensenso::clearWorkspaceCalibration(bool store) {
 void Ensenso::storeWorkspaceCalibration() {
 	NxLibCommand command(cmdStoreCalibration);
 	setNx(command.parameters()[itmCameras][0], serialNumber());
+
+	// Override calibration in EEPROM.
+	setNx(command.parameters()[itmCalibration][0], true);
+
+	// Store and override the target link in EEPROM.
+	setNx(command.parameters()[itmLink][0], true);
 	executeNx(command);
 }
 
