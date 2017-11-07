@@ -76,6 +76,7 @@ protected:
 		param<bool>("dump_images", dump_images, true);
 		param<bool>("registered", registered, true);
 		param<bool>("connect_monocular", connect_monocular, true);
+		param<bool>("use_frontlight", use_frontlight, true);
 		param<bool>("synced_retrieve", synced_retrieve, false);
 		param<bool>("hardware_trigger", hardware_trigger, false);
 
@@ -176,6 +177,9 @@ protected:
 		// check if there is an monocular camera connected
 		has_monocular = ensenso_camera->hasMonocular();
 
+		// check if camera really has front light. This will throw an error if it doesn't.
+		if (use_frontlight) ensenso_camera->setFrontLight(false);
+
 		ROS_INFO_STREAM("Ensenso opened successfully.");
 	}
 
@@ -225,7 +229,7 @@ protected:
 			flex_view = ensenso_camera->flexView();
 			ensenso_camera->setFlexView(0);
 			ensenso_camera->setProjector(false);
-			ensenso_camera->setFrontLight(true);
+			if (use_frontlight) ensenso_camera->setFrontLight(true);
 		}
 
 		cv::Mat image;
@@ -238,7 +242,7 @@ protected:
 
 		// restore settings
 		if (!has_monocular && capture) {
-			ensenso_camera->setFrontLight(false);
+			if (use_frontlight) ensenso_camera->setFrontLight(false);
 			ensenso_camera->setProjector(true);
 			if (flex_view > 0) {
 				ensenso_camera->setFlexView(flex_view);
@@ -624,6 +628,9 @@ protected:
 
 	/// If true, tries to connect an monocular camera.
 	bool connect_monocular;
+
+	/// If true, the front light is available.
+	bool use_frontlight;
 
 	/// If true, retrieves the monocular camera and Ensenso simultaneously. A hardware trigger is advised to remove the projector from the uEye image.
 	bool synced_retrieve;
