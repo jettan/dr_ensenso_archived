@@ -79,6 +79,7 @@ protected:
 		param<bool>("use_frontlight", use_frontlight, true);
 		param<bool>("synced_retrieve", synced_retrieve, false);
 		param<bool>("hardware_trigger", hardware_trigger, false);
+		param<double>("sleep_time", sleep_time, 0.0);
 
 		// get Ensenso serial
 		serial = dr::getParam<std::string>(handle(), "serial", "");
@@ -335,6 +336,11 @@ protected:
 		bool input_state = ensenso_camera->readInputState();
 		if (prev_input_state && !input_state) {
 			dr_ensenso_msgs::GetCameraData::Response res;
+			ros::Time start = ros::Time::now();
+
+			while (ros::Time::now() - start < ros::Duration(sleep_time)) {
+				ros::spinOnce();
+			}
 			onGetData(res);
 		}
 
@@ -637,6 +643,9 @@ protected:
 
 	/// If true, trigger on hardware.
 	bool hardware_trigger;
+
+	/// Sleep time for hardware trigger.
+	double sleep_time;
 
 	/// The previous input state.
 	bool prev_input_state;
