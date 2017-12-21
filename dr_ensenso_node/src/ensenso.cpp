@@ -29,6 +29,7 @@
 #include <pcl/point_types.h>
 
 #include <boost/optional.hpp>
+#include <future>
 
 #include <memory>
 
@@ -80,6 +81,7 @@ protected:
 		param<bool>("synced_retrieve", synced_retrieve, false);
 		param<bool>("hardware_trigger", hardware_trigger, false);
 		param<double>("sleep_time", sleep_time, 0.0);
+		param<double>("elapsed_threshold", elapsed_threshold, 1.0);
 
 		// get Ensenso serial
 		serial = dr::getParam<std::string>(handle(), "serial", "");
@@ -100,8 +102,8 @@ protected:
 
 		// activate service servers
 		if (!hardware_trigger) {
-			servers.camera_data                 = advertiseService("get_data"                   , &EnsensoNode::onGetData                  , this);
-			servers.dump_data                   = advertiseService("dump_data"                  , &EnsensoNode::onDumpData                 , this);
+			servers.camera_data             = advertiseService("get_data"                   , &EnsensoNode::onGetData                  , this);
+			servers.dump_data               = advertiseService("dump_data"                  , &EnsensoNode::onDumpData                 , this);
 		}
 
 		servers.get_pattern_pose            = advertiseService("detect_calibration_pattern" , &EnsensoNode::onDetectCalibrationPattern , this);
@@ -258,12 +260,23 @@ protected:
 		boost::filesystem::path path(camera_data_path);
 		if (!boost::filesystem::is_directory(path)) {
 			boost::filesystem::create_directory(camera_data_path);
+			boost::filesystem::create_directory(camera_data_path + "/bad");
 		}
 
 		std::string time_string = getTimeString();
+		std::future<ros::Duration> future_elapsed_time = elapsed_time.get_future();
 
-		pcl::io::savePCDFileBinary(camera_data_path + "/" + time_string + "_cloud.pcd", *point_cloud);
-		cv::imwrite(camera_data_path + "/" + time_string + "_image.png", image);
+		double threshold = elapsed_threshold;
+		std::string save_path = camera_data_path;
+		std::thread write_thread([save_path, future_elapsed_time=std::move(future_elapsed_time), threshold, time_string, point_cloud, &image] () mutable {
+			future_elapsed_time.wait();
+
+			ros::Duration duration = future_elapsed_time.get();
+			save_path = duration.toSec() < threshold ? save_path + "/bad" : save_path;
+			pcl::io::savePCDFileBinary(save_path + "/" + time_string + "_cloud.pcd", *point_cloud);
+			cv::imwrite(save_path + "/" + time_string + "_image.png", image);
+		});
+		write_thread.detach();
 	}
 
 	bool capture(bool stereo, bool monocular) {
@@ -342,6 +355,11 @@ protected:
 				ros::spinOnce();
 			}
 			onGetData(res);
+			entrance_time = ros::Time::now();
+		}
+
+		if (!prev_input_state && input_state) {
+			elapsed_time.set_value(ros::Time::now() -entrance_time);
 		}
 
 		prev_input_state = input_state;
@@ -647,8 +665,14 @@ protected:
 	/// Sleep time for hardware trigger.
 	double sleep_time;
 
+	double elapsed_threshold;
+
 	/// The previous input state.
 	bool prev_input_state;
+
+	ros::Time entrance_time;
+
+	std::promise<ros::Duration> elapsed_time;
 };
 
 }
