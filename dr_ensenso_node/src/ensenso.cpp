@@ -29,7 +29,8 @@
 #include <pcl/point_types.h>
 
 #include <boost/optional.hpp>
-#include <future>
+#include <atomic>
+#include <thread>
 
 #include <memory>
 
@@ -174,6 +175,7 @@ protected:
 			double poll_input_rate = dr::getParam(handle(), "poll_input_rate", 30);
 			if (poll_input_rate > 0) {
 				hardware_trigger_timer = createTimer(ros::Rate(poll_input_rate), &EnsensoNode::captureHardware, this);
+				elapsed_time_available.store(false);
 			}
 		}
 
@@ -260,21 +262,30 @@ protected:
 		boost::filesystem::path path(camera_data_path);
 		if (!boost::filesystem::is_directory(path)) {
 			boost::filesystem::create_directory(camera_data_path);
+		}
+
+		if (!boost::filesystem::is_directory(camera_data_path + "/bad")) {
 			boost::filesystem::create_directory(camera_data_path + "/bad");
 		}
 
 		std::string time_string = getTimeString();
-		std::future<ros::Duration> future_elapsed_time = elapsed_time.get_future();
 
-		double threshold = elapsed_threshold;
 		std::string save_path = camera_data_path;
-		std::thread write_thread([save_path, future_elapsed_time=std::move(future_elapsed_time), threshold, time_string, point_cloud, &image] () mutable {
-			future_elapsed_time.wait();
 
-			ros::Duration duration = future_elapsed_time.get();
-			save_path = duration.toSec() < threshold ? save_path + "/bad" : save_path;
-			pcl::io::savePCDFileBinary(save_path + "/" + time_string + "_cloud.pcd", *point_cloud);
-			cv::imwrite(save_path + "/" + time_string + "_image.png", image);
+		std::thread write_thread([save_path, time_string, point_cloud, image=std::move(image), this] () mutable {
+			while (!this->elapsed_time_available);
+			//ROS_WARN_STREAM("Elapsed time is available!");
+
+			save_path = this->elapsed_time.toSec() < this->elapsed_threshold ? save_path + "/bad" : save_path;
+			//ROS_ERROR_STREAM(save_path);
+
+			std::string pcd_path = save_path + "/" + time_string + "_cloud.pcd";
+
+			pcl::io::savePCDFileBinary(pcd_path, *point_cloud);
+			std::string img_path = save_path + "/" + time_string + "_image.png";
+
+			//ROS_INFO_STREAM(image.rows << " " << image.cols);
+			cv::imwrite(img_path, image);
 		});
 		write_thread.detach();
 	}
@@ -347,7 +358,9 @@ protected:
 		if (!hardware_trigger) return;
 
 		bool input_state = ensenso_camera->readInputState();
-		if (prev_input_state && !input_state) {
+		if (!prev_input_state && input_state) {
+			elapsed_time_available.store(false);
+			ROS_ERROR_STREAM("Taking picture!");
 			dr_ensenso_msgs::GetCameraData::Response res;
 			ros::Time start = ros::Time::now();
 
@@ -358,8 +371,9 @@ protected:
 			entrance_time = ros::Time::now();
 		}
 
-		if (!prev_input_state && input_state) {
-			elapsed_time.set_value(ros::Time::now() -entrance_time);
+		if (prev_input_state && !input_state) {
+			elapsed_time = ros::Time::now() - entrance_time;
+			elapsed_time_available.store(true);
 		}
 
 		prev_input_state = input_state;
@@ -672,7 +686,9 @@ protected:
 
 	ros::Time entrance_time;
 
-	std::promise<ros::Duration> elapsed_time;
+	ros::Duration elapsed_time;
+
+	std::atomic<bool> elapsed_time_available;
 };
 
 }
