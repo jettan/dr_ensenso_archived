@@ -44,8 +44,8 @@ public:
 	}
 
 	/// Read input state from sensor.
-	bool readInputState() const {
-		return ensenso_camera[itmParameters][itmIO][itmInput].asBool();
+	bool readInputState(NxLibItem const & item) const {
+		return item[itmParameters][itmIO][itmInput].asBool();
 	}
 
 	/// Returns whether the Ensenso has a monocular camera.

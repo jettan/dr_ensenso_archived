@@ -355,9 +355,9 @@ protected:
 	}
 
 	void captureHardware(ros::TimerEvent const &) {
-		if (!hardware_trigger) return;
+		if (!hardware_trigger || !(ensenso_camera->nativeMonocular())) return;
 
-		bool input_state = ensenso_camera->readInputState();
+		bool input_state = ensenso_camera->readInputState(*(ensenso_camera->nativeMonocular()));
 		if (!prev_input_state && input_state) {
 			elapsed_time_available.store(false);
 			ROS_ERROR_STREAM("Taking picture!");
