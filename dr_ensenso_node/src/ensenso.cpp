@@ -360,7 +360,6 @@ protected:
 		bool input_state = ensenso_camera->readInputState(*(ensenso_camera->nativeMonocular()));
 		if (!prev_input_state && input_state) {
 			elapsed_time_available.store(false);
-			ROS_ERROR_STREAM("Taking picture!");
 			dr_ensenso_msgs::GetCameraData::Response res;
 			ros::Time start = ros::Time::now();
 
