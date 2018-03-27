@@ -47,7 +47,7 @@ bool Ensenso::loadParameters(std::string const parameters_file) {
 
 bool Ensenso::loadMonocularParameters(std::string const parameters_file) {
 	if (!monocular_camera) throw std::runtime_error("No monocular camera found. Can not load monocular camara parameters.");
-	return setNxJsonFromFile(monocular_camera.get()[itmParameters], parameters_file);
+	return setNxJsonFromFile(monocular_camera.get(), parameters_file);
 }
 
 void Ensenso::loadMonocularUeyeParameters(std::string const parameters_file) {
