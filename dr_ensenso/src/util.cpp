@@ -33,6 +33,14 @@ boost::optional<NxLibItem> findCameraByType(std::string const & type) {
 	return {};
 }
 
+boost::optional<bool> isCameraOpened(std::string const& serial) {
+	NxLibItem camera = NxLibItem{}[itmCameras][itmBySerialNo][serial];
+	if (camera.exists()) {
+		return camera[itmStatus][itmOpen].asBool();
+	}
+	return {};
+}
+
 namespace {
 	/// Open an optional camera, or return nothing.
 	boost::optional<NxLibItem> openCamera(boost::optional<NxLibItem> camera) {

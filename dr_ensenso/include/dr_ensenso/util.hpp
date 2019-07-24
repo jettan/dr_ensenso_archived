@@ -29,6 +29,12 @@ boost::optional<NxLibItem> findCameraByLink(std::string const & serial);
  */
 boost::optional<NxLibItem> findCameraByType(std::string const & type);
 
+/// Check the opened status of camera with requested serial number.
+/**
+ * \return A boolean representing the opened status of the camera.
+ */
+boost::optional<bool> isCameraOpened(std::string const & serial);
+
 /// Find and open a camera by serial number.
 /**
  * \return The NxLibItem representing the found camera or an empty optional.
