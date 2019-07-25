@@ -25,6 +25,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/image_encodings.h>
+#include <std_msgs/Bool.h>
 #include <std_srvs/Empty.h>
 
 #include <opencv2/opencv.hpp>
@@ -155,6 +156,7 @@ protected:
 		// activate publishers
 		publishers.calibration = advertise<geometry_msgs::PoseStamped>("calibration", 1, true);
 		publishers.cloud       = advertise<PointCloud>("cloud", 1, true);
+		publishers.status      = advertise<std_msgs::Bool>("connection_status", 1, true);
 		publishers.image       = image_transport.advertise("image", 1, true);
 
 		// load ensenso parameters file
@@ -206,6 +208,12 @@ protected:
 			publish_images_timer = createTimer(ros::Rate(publish_images_rate), &EnsensoNode::publishImage, this);
 		}
 
+		// start image publishing timer
+		double publish_status_rate = dr::getParam(handle(), "publish_status_rate", 10.0);
+		if (publish_status_rate > 0) {
+			publish_status_timer = createTimer(ros::Rate(publish_status_rate), &EnsensoNode::publishStatus, this);
+		}
+
 		// check if there is an monocular camera connected
 		has_monocular = ensenso_camera->hasMonocular();
 
@@ -236,6 +244,15 @@ protected:
 		// publish the image
 		publishers.image.publish(cv_image.toImageMsg());
 	}
+
+	void publishStatus(ros::TimerEvent const &) {
+		boost::optional<bool> status = isCameraOpened(serial);
+		std_msgs::Bool status_message;
+		status_message.data = status ? status.get() : false;
+
+		publishers.status.publish(status_message);
+	}
+
 
 	PointCloud::Ptr getPointCloud() {
 		PointCloud::Ptr cloud(new PointCloud);
@@ -616,12 +633,18 @@ protected:
 	/// Timer to trigger image publishing.
 	ros::Timer publish_images_timer;
 
+	/// Timer to trigger status publishing.
+	ros::Timer publish_status_timer;
+
 	struct Publishers {
 		/// Publisher for the calibration result.
 		ros::Publisher calibration;
 
 		/// Publisher for publishing raw point clouds.
 		ros::Publisher cloud;
+
+		/// Publisher for camera status.
+		ros::Publisher status;
 
 		/// Publisher for publishing images.
 		image_transport::Publisher image;
